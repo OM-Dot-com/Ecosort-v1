@@ -8,11 +8,20 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge } from '@/components/ui/Badge'
 import { timeAgo } from '@/lib/utils'
 import type { WasteScan } from '@/lib/types'
+import ScanResultCard from '@/components/scanner/ScanResultCard'
 import {
-  Camera, Upload, Recycle, AlertTriangle, CheckCircle, XCircle,
+  Camera, Upload, Recycle,
   History, X, Sparkles, Image as ImageIcon,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+
+function getCategoryVariant(cat: string) {
+  const map: Record<string, 'success' | 'warning' | 'danger' | 'info' | 'purple'> = {
+    'Wet Waste': 'success', 'Dry Waste': 'info', 'Recyclable': 'warning',
+    'Non-Recyclable': 'danger', 'Hazardous': 'danger', 'E-Waste': 'purple',
+  }
+  return map[cat] || 'default'
+}
 
 export default function ScannerPage() {
   const { user } = useAuth()
@@ -92,14 +101,6 @@ export default function ScannerPage() {
     }
   }
 
-  const getCategoryVariant = (cat: string) => {
-    const map: Record<string, 'success' | 'warning' | 'danger' | 'info' | 'purple'> = {
-      'Wet Waste': 'success', 'Dry Waste': 'info', 'Recyclable': 'warning',
-      'Non-Recyclable': 'danger', 'Hazardous': 'danger', 'E-Waste': 'purple',
-    }
-    return map[cat] || 'default'
-  }
-
   return (
     <DashboardLayout>
       <div className="page-container">
@@ -172,89 +173,11 @@ export default function ScannerPage() {
           {/* Results Section */}
           <div>
             {result && (
-              <div className="card animate-fade-in">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-bold text-green-800">Scan Results</h3>
-                  {pointsAwarded > 0 && (
-                    <Badge variant="success">+{pointsAwarded} pts</Badge>
-                  )}
-                </div>
-
-                {result.needs_verification && (
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-4 flex items-start gap-3">
-                    <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-sm font-medium text-yellow-800">Low Confidence</p>
-                      <p className="text-xs text-yellow-700">AI confidence is low. Please verify this classification.</p>
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-4">
-                  {/* Waste Name & Category */}
-                  <div>
-                    <p className="text-2xl font-bold text-gray-800">{result.waste_name}</p>
-                    <Badge variant={getCategoryVariant(result.waste_category)} className="mt-1">
-                      {result.waste_category}
-                    </Badge>
-                  </div>
-
-                  {/* Confidence Score */}
-                  {result.confidence_score !== null && (
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Confidence</p>
-                      <div className="w-full bg-gray-200 rounded-full h-2.5">
-                        <div
-                          className="h-2.5 rounded-full transition-all"
-                          style={{
-                            width: `${(result.confidence_score) * 100}%`,
-                            backgroundColor: result.confidence_score > 0.7 ? '#16a34a' : result.confidence_score > 0.4 ? '#eab308' : '#ef4444',
-                          }}
-                        />
-                      </div>
-                      <p className="text-xs text-gray-500 mt-1">{Math.round(result.confidence_score * 100)}%</p>
-                    </div>
-                  )}
-
-                  {/* Bin */}
-                  <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50">
-                    <div className="w-8 h-8 rounded-lg" style={{ backgroundColor: result.bin_color || '#6b7280' }} />
-                    <div>
-                      <p className="text-xs text-gray-500">Recommended Bin</p>
-                      <p className="text-sm font-medium">{result.recommended_bin}</p>
-                    </div>
-                  </div>
-
-                  {/* Recyclable */}
-                  <div className="flex items-center gap-2">
-                    {result.recyclable ? (
-                      <><CheckCircle className="h-5 w-5 text-green-600" /><span className="text-sm font-medium text-green-700">Recyclable</span></>
-                    ) : (
-                      <><XCircle className="h-5 w-5 text-red-500" /><span className="text-sm font-medium text-red-600">Not Recyclable</span></>
-                    )}
-                  </div>
-
-                  {/* Instructions */}
-                  {result.disposal_instructions && (
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1 font-medium">Disposal Instructions</p>
-                      <p className="text-sm text-gray-700 leading-relaxed">{result.disposal_instructions}</p>
-                    </div>
-                  )}
-
-                  {/* Environmental Impact */}
-                  {result.environmental_impact && (
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1 font-medium">Environmental Impact</p>
-                      <p className="text-sm text-gray-700 leading-relaxed">{result.environmental_impact}</p>
-                    </div>
-                  )}
-                </div>
-
-                <button onClick={clearImage} className="btn-secondary w-full mt-4">
-                  Scan Another
-                </button>
-              </div>
+              <ScanResultCard
+                result={result}
+                pointsAwarded={pointsAwarded}
+                onScanAnother={clearImage}
+              />
             )}
 
             {/* Scan History */}
