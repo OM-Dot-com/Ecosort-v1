@@ -5,10 +5,10 @@
  * function to track the disposal_confirmed conversion event.
  *
  * Exposure tracking (critical for experiments):
- *   getValue() does NOT auto-record a $flag_exposure event.
- *   We explicitly call trackExposureEvent('scanner_experiment')
- *   after evaluating the flag so that Flagsmith can join the
- *   exposure with the disposal_confirmed conversion metric.
+ *   getExperimentFlag('scanner_experiment') evaluates the flag AND
+ *   records the $flag_exposure event in one call. This is the
+ *   recommended approach from the official docs:
+ *   https://docs.flagsmith.com/experimentation/run-an-experiment
  *
  * Event flushing:
  *   ensureFlagsmith() registers a visibilitychange listener that
@@ -52,17 +52,12 @@ export function useScannerExperiment(
 
         if (cancelled) return
 
-        // 1. Evaluate the flag — returns "basic" or "enhanced"
-        const raw = flagsmith.getValue('scanner_experiment')
+        // getExperimentFlag evaluates the flag AND records the
+        // $flag_exposure event in one call (official docs recommend this).
+        const flag = flagsmith.getExperimentFlag('scanner_experiment')
+        const raw = flag?.value
         const val = typeof raw === 'string' ? raw : 'basic'
         setVariant(val === 'enhanced' ? 'enhanced' : 'basic')
-
-        // 2. Record the $flag_exposure event explicitly.
-        //    getValue() does NOT do this automatically.
-        //    trackExposureEvent() is safe to call even if the experiment
-        //    is not yet running — it will be a no-op in that case.
-        //    The SDK deduplicates exposures per identity+flag per flush.
-        flagsmith.trackExposureEvent('scanner_experiment')
 
         setIsReady(true)
       } catch (err) {
