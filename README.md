@@ -59,12 +59,13 @@ A full-stack Next.js application that helps people manage waste responsibly, lea
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | Next.js 15, React 19, TypeScript |
+| Frontend | Next.js 16, React 19, TypeScript |
 | Styling | Tailwind CSS 4 |
 | Backend | Next.js API Routes (Server-side) |
 | Database | Supabase (PostgreSQL) |
 | Auth | Supabase Auth |
-| AI | Google Gemini 2.0 Flash (Vision) |
+| AI | Google Gemini 3.5 Flash (Vision) |
+| Experimentation | Flagsmith (@flagsmith/flagsmith v12.6.0) |
 | Icons | Lucide React |
 | Notifications | React Hot Toast |
 | Deployment | Vercel-ready |
@@ -118,6 +119,9 @@ NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your-maps-api-key
 
 # App URL
 NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+# Flagsmith (A/B Experimentation)
+NEXT_PUBLIC_FLAGSMITH_ENVIRONMENT_KEY=your-flagsmith-client-side-environment-key
 ```
 
 #### Getting API Keys
@@ -129,13 +133,19 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 **Google Gemini API:**
 - Go to [Google AI Studio](https://aistudio.google.com/apikey)
 - Create an API key
-- The app uses `gemini-2.0-flash` model
+- The app uses `gemini-3.5-flash` model
 
 **Google Maps (Optional):**
 - Go to [Google Cloud Console](https://console.cloud.google.com)
 - Enable Maps JavaScript API
 - Create an API key
 - Without this, the Nearby Map page shows a list view instead
+
+**Flagsmith (A/B Experimentation):**
+- Sign up at [flagsmith.com](https://www.flagsmith.com)
+- Create a project and environment
+- Go to Settings → Keys → Client-side Environment Key
+- See the [Experimentation](#-experimentation--ab-testing) section below for full setup
 
 ### 4. Run Development Server
 
@@ -211,14 +221,86 @@ src/
 │   └── page.tsx          # Landing page
 ├── components/
 │   ├── layout/           # Sidebar, TopBar, MobileNav, DashboardLayout
+│   ├── scanner/          # ScanResultCard (A/B experiment variants)
 │   └── ui/               # Reusable components (Avatar, Badge, etc.)
-├── hooks/                # Custom hooks (useAuth, useLocation)
+├── hooks/                # Custom hooks (useAuth, useLocation, useScannerExperiment)
 ├── lib/
 │   ├── supabase/         # Supabase client setup
+│   ├── flagsmith.ts      # Flagsmith client singleton
 │   ├── types.ts          # TypeScript interfaces
 │   └── utils.ts          # Utility functions
 └── middleware.ts          # Auth middleware
 ```
+
+---
+
+## 🧪 Experimentation / A/B Testing
+
+> **WeMakeDevs × Flagsmith Hackathon 2026 — Track 01: Test Something Real**
+
+### Hypothesis
+
+> Showing disposal instructions directly with the AI scan result will increase
+> the number of users who confirm correct disposal.
+
+### Experiment Design
+
+| | Version A — "basic" (Control) | Version B — "enhanced" (Variant) |
+|---|---|---|
+| Waste name, category, bin, recyclable | ✅ | ✅ |
+| Inline disposal instructions | ❌ | ✅ (2–3 lines) |
+| "View Disposal Guide →" button | ✅ | ✅ ("View Full Disposal Guide →") |
+| "I disposed of it correctly ✓" button | ✅ | ✅ |
+
+### Flagsmith Configuration
+
+| Setting | Value |
+|---------|-------|
+| Feature Flag | `scanner_experiment` (multivariate) |
+| Control Value | `"basic"` |
+| Variation Value | `"enhanced"` |
+| Metric | `disposal_confirmed` (Occurrence, higher is better) |
+| SDK | `@flagsmith/flagsmith` v12.6.0 (JavaScript) |
+
+### How It Works
+
+1. **Identity** — Logged-in users are identified by their Supabase UUID. Anonymous users get a persistent random UUID stored in `localStorage` (`ecosort_anon_id`). No PII (email, name) is ever sent to Flagsmith.
+
+2. **Exposure** — `flagsmith.getExperimentFlag('scanner_experiment')` evaluates the flag AND records a `$flag_exposure` event in one call ([official docs](https://docs.flagsmith.com/experimentation/run-an-experiment)).
+
+3. **Conversion** — When the user clicks "I disposed of it correctly ✓", `flagsmith.trackEvent('disposal_confirmed')` fires (once per scan result).
+
+4. **Flushing** — A `visibilitychange` listener calls `flagsmith.flushEvents()` when the page is hidden, so events are not lost on tab close / navigate away.
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/lib/flagsmith.ts` | Flagsmith client singleton, identity resolution, event flushing |
+| `src/hooks/useScannerExperiment.ts` | React hook: returns variant + `trackDisposalConfirmed()` |
+| `src/components/scanner/ScanResultCard.tsx` | A/B result card — renders both variants |
+| `src/app/dashboard/scanner/page.tsx` | Scanner page — uses `ScanResultCard` |
+| `scripts/simulate-traffic.mjs` | Simulated traffic script (hackathon demo only) |
+
+### Setting Up the Experiment in Flagsmith Dashboard
+
+1. Create a feature flag called `scanner_experiment`
+2. Add a multivariate value: control = `"basic"`, variation = `"enhanced"` (50/50 split)
+3. Create a metric called `disposal_confirmed` (type: Occurrence, higher is better)
+4. Create an experiment on the `scanner_experiment` flag using the `disposal_confirmed` metric
+5. Start the experiment
+
+### Running the Simulated Traffic Script
+
+```bash
+# Simulate 200 users (default)
+node --env-file=.env.local scripts/simulate-traffic.mjs 200
+
+# Simulate a custom number
+node --env-file=.env.local scripts/simulate-traffic.mjs 50
+```
+
+> ⚠️ **ALL traffic from this script is simulated.** Every user has an identical 40% conversion probability regardless of variant. Any difference in rates is random chance, not a real treatment effect.
 
 ---
 
