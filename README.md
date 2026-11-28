@@ -1,6 +1,118 @@
-# EcoSort – AI-Powered Waste Management & Community Cleaning Platform https://ecosort-v1.vercel.app/
+[README (2).md](https://github.com/user-attachments/files/35540410/README.2.md)
+# 🌱 EcoSort – AI-Powered Waste Management & Community Cleaning Platform
+
+> **WeMakeDevs × Flagsmith Experimentation Hackathon 2026 · Track 01 – Test Something Real**
+> We stopped guessing which AI scanner result helps people dispose of waste correctly, and started **testing it** with a real A/B experiment powered by **Flagsmith Experimentation**. → [Jump to the experiment](#-experimentation--ab-testing)
+
+🔗 **Live app:** https://ecosort-v1.vercel.app/
+🎥 **Demo video:** _add your video link here_
 
 A full-stack Next.js application that helps people manage waste responsibly, learn recycling, organize community cleaning activities, collaborate with nearby people, and earn reward points for environmental contributions.
+
+---
+
+## 🧪 Experimentation / A/B Testing
+
+### The question
+When someone scans waste with EcoSort's AI scanner, does showing **disposal instructions right on the result card** help them actually dispose of it correctly, or is a simple result with a link to the guide enough?
+
+### Hypothesis
+> Showing disposal instructions directly with the AI scan result (**enhanced**) will increase the number of users who confirm correct disposal, compared to the **basic** result.
+
+### Experiment design
+
+| | Control — `basic` | Variant_1 — `enhanced` |
+|---|---|---|
+| Waste name, category, bin, recyclable | ✅ | ✅ |
+| Inline disposal instructions | ❌ | ✅ (2–3 lines) |
+| Disposal guide button | ✅ "View Disposal Guide →" | ✅ "View Full Disposal Guide →" |
+| "I disposed of it correctly ✓" button | ✅ | ✅ |
+
+### Flagsmith configuration
+
+| Setting | Value |
+|---------|-------|
+| Experiment | EcoSort Scanner Experience |
+| Feature flag | `scanner_experiment` (multivariate) |
+| Control value | `"basic"` |
+| Variation value | `"enhanced"` |
+| Primary metric | `disposal_confirmed` (Occurrence, higher is better) |
+| Traffic split | 50% / 50% |
+| SDK | `@flagsmith/flagsmith` v12.6.0 (JavaScript) |
+
+### Why `disposal_confirmed` and not "guide opened"?
+The enhanced variant already shows instructions inline, so users may open the full guide *less* even when the experience is *better*. Measuring "guide opened" would unfairly penalise it. `disposal_confirmed` measures what we actually care about: **did the user dispose of the waste correctly?**
+
+### How it works
+
+```
+User scans waste
+  → flagsmith.identify(userId)                        // Supabase UUID or anonymous UUID
+  → flagsmith.getExperimentFlag('scanner_experiment')  // gets variant AND records exposure
+  → result card renders "basic" or "enhanced"
+  → user clicks "I disposed of it correctly ✓"
+  → flagsmith.trackEvent('disposal_confirmed')         // conversion
+  → page hidden → flagsmith.flushEvents()              // no events lost
+```
+
+1. **Identity** — Logged-in users are identified by their Supabase UUID. Anonymous users get a persistent random UUID stored in `localStorage` (`ecosort_anon_id`). No PII (email, name) is ever sent to Flagsmith.
+2. **Exposure** — `flagsmith.getExperimentFlag('scanner_experiment')` evaluates the flag **and** records the exposure in one call ([official docs](https://docs.flagsmith.com/experimentation/run-an-experiment)).
+3. **Conversion** — Clicking "I disposed of it correctly ✓" fires `flagsmith.trackEvent('disposal_confirmed')` (once per scan result).
+4. **Flushing** — A `visibilitychange` listener calls `flagsmith.flushEvents()` when the page is hidden, so events aren't lost on tab close or navigation.
+
+### 📊 Results
+
+> ⚠️ **All experiment traffic below is SIMULATED.** Identities are prefixed `sim-`, and **both variants were given the same 40% conversion probability.** Variant assignment came from Flagsmith, not from the script.
+
+| Variant | Exposures | Conversion rate |
+|---|---|---|
+| Control (`basic`) | 108 | 41.7% |
+| Variant_1 (`enhanced`) | 114 | 37.7% |
+
+- Delta: −9.5%, 95% credible interval **[−39.0%, +20.1%]**
+- Flagsmith shows Control leading with a **74%** chance to be best
+
+**Interpretation:** both rates are close to the 40% used in the simulation, and the credible interval includes zero, so there is **no conclusive winner**. That is the correct result for identical simulated rates, and it proves the exposure → conversion pipeline works end to end. A real product decision needs real user traffic; the experiment keeps running for real users on the live app.
+
+<!-- Drag your Flagsmith screenshots here:
+![Experiment summary](docs/results-summary.png)
+![Analysis table](docs/results-analysis.png)
+![Exposures over time](docs/results-exposures.png)
+-->
+
+### 🐛 What we learned while debugging
+The first 205 simulated identities were **enrolled** but recorded **no exposures**. We had been calling `getValue()` followed by `trackExposureEvent()` without the variant value, so Flagsmith couldn't attribute the exposure, and conversions without an exposure don't count. Following the [Flagsmith docs](https://docs.flagsmith.com/experimentation/run-an-experiment), we switched to `getExperimentFlag()`, which evaluates the flag and records the exposure in one call. Exposures and conversions appeared right away. That's why the dashboard shows 427 enrolled but 222 exposures.
+
+### Key files
+
+| File | Purpose |
+|------|---------|
+| `src/lib/flagsmith.ts` | Flagsmith client singleton, identity resolution, event flushing |
+| `src/hooks/useScannerExperiment.ts` | React hook: returns variant + `trackDisposalConfirmed()` |
+| `src/components/scanner/ScanResultCard.tsx` | A/B result card, renders both variants |
+| `src/app/dashboard/scanner/page.tsx` | Scanner page, uses `ScanResultCard` |
+| `scripts/simulate-traffic.mjs` | Simulated traffic script (hackathon demo only) |
+
+### Setting up the experiment in Flagsmith
+
+1. Create a multivariate feature flag `scanner_experiment`: control = `"basic"`, variation = `"enhanced"`
+2. Create a metric `disposal_confirmed` (Occurrence, higher is better)
+3. Create an experiment on `scanner_experiment` with `disposal_confirmed` as the primary metric and a 50/50 split
+4. Launch the experiment
+
+### Running the simulated traffic script
+
+```bash
+# Simulate 200 users (default)
+node --env-file=.env.local scripts/simulate-traffic.mjs 200
+
+# Simulate a custom number
+node --env-file=.env.local scripts/simulate-traffic.mjs 50
+```
+
+> ⚠️ **ALL traffic from this script is simulated.** Every user has an identical 40% conversion probability regardless of variant. Any difference in rates is random chance, not a real treatment effect.
+
+---
 
 ## 🌿 Features
 
@@ -11,6 +123,7 @@ A full-stack Next.js application that helps people manage waste responsibly, lea
 - Confidence scoring with verification prompts
 - Scan history tracking
 - Points awarded per scan (daily limit: 10)
+- **A/B tested result card via Flagsmith** (see above)
 
 ### Eco Community
 - Create and join cleaning groups
@@ -68,22 +181,24 @@ A full-stack Next.js application that helps people manage waste responsibly, lea
 | Experimentation | Flagsmith (@flagsmith/flagsmith v12.6.0) |
 | Icons | Lucide React |
 | Notifications | React Hot Toast |
-| Deployment | Vercel-ready |
+| Deployment | Vercel |
 
 ---
 
 ## 📦 Installation
 
 ### Prerequisites
-- Node.js 18+ and npm
+- Node.js 20.6+ and npm (20.6+ needed for `--env-file` in the simulation script)
 - A Supabase project (free tier works)
 - Google Gemini API key (for AI Scanner)
+- Flagsmith account with Experimentation enabled
 - Google Maps API key (optional, for interactive maps)
 
 ### 1. Clone & Install
 
 ```bash
-cd ecosort-app
+git clone https://github.com/OM-Dot-com/Ecosort-v1.git
+cd Ecosort-v1
 npm install
 ```
 
@@ -96,8 +211,6 @@ npm install
 5. Go to **Settings > API** to find your credentials
 
 ### 3. Configure Environment Variables
-
-Copy the example env file:
 
 ```bash
 cp .env.local.example .env.local
@@ -133,19 +246,17 @@ NEXT_PUBLIC_FLAGSMITH_ENVIRONMENT_KEY=your-flagsmith-client-side-environment-key
 **Google Gemini API:**
 - Go to [Google AI Studio](https://aistudio.google.com/apikey)
 - Create an API key
-- The app uses `gemini-3.5-flash` model
+- The app uses the `gemini-3.5-flash` model
 
 **Google Maps (Optional):**
 - Go to [Google Cloud Console](https://console.cloud.google.com)
-- Enable Maps JavaScript API
-- Create an API key
+- Enable Maps JavaScript API and create an API key
 - Without this, the Nearby Map page shows a list view instead
 
 **Flagsmith (A/B Experimentation):**
 - Sign up at [flagsmith.com](https://www.flagsmith.com)
-- Create a project and environment
-- Go to Settings → Keys → Client-side Environment Key
-- See the [Experimentation](#-experimentation--ab-testing) section below for full setup
+- Open your project, select the **Development** environment, then **SDK Keys** → copy the **Client-side Environment Key**
+- See [Experimentation](#-experimentation--ab-testing) above for the full setup
 
 ### 4. Run Development Server
 
@@ -229,78 +340,10 @@ src/
 │   ├── flagsmith.ts      # Flagsmith client singleton
 │   ├── types.ts          # TypeScript interfaces
 │   └── utils.ts          # Utility functions
-└── middleware.ts          # Auth middleware
+└── middleware.ts         # Auth middleware
+scripts/
+└── simulate-traffic.mjs  # Simulated experiment traffic (labelled, sim- identities)
 ```
-
----
-
-## 🧪 Experimentation / A/B Testing
-
-> **WeMakeDevs × Flagsmith Hackathon 2026 — Track 01: Test Something Real**
-
-### Hypothesis
-
-> Showing disposal instructions directly with the AI scan result will increase
-> the number of users who confirm correct disposal.
-
-### Experiment Design
-
-| | Version A — "basic" (Control) | Version B — "enhanced" (Variant) |
-|---|---|---|
-| Waste name, category, bin, recyclable | ✅ | ✅ |
-| Inline disposal instructions | ❌ | ✅ (2–3 lines) |
-| "View Disposal Guide →" button | ✅ | ✅ ("View Full Disposal Guide →") |
-| "I disposed of it correctly ✓" button | ✅ | ✅ |
-
-### Flagsmith Configuration
-
-| Setting | Value |
-|---------|-------|
-| Feature Flag | `scanner_experiment` (multivariate) |
-| Control Value | `"basic"` |
-| Variation Value | `"enhanced"` |
-| Metric | `disposal_confirmed` (Occurrence, higher is better) |
-| SDK | `@flagsmith/flagsmith` v12.6.0 (JavaScript) |
-
-### How It Works
-
-1. **Identity** — Logged-in users are identified by their Supabase UUID. Anonymous users get a persistent random UUID stored in `localStorage` (`ecosort_anon_id`). No PII (email, name) is ever sent to Flagsmith.
-
-2. **Exposure** — `flagsmith.getExperimentFlag('scanner_experiment')` evaluates the flag AND records a `$flag_exposure` event in one call ([official docs](https://docs.flagsmith.com/experimentation/run-an-experiment)).
-
-3. **Conversion** — When the user clicks "I disposed of it correctly ✓", `flagsmith.trackEvent('disposal_confirmed')` fires (once per scan result).
-
-4. **Flushing** — A `visibilitychange` listener calls `flagsmith.flushEvents()` when the page is hidden, so events are not lost on tab close / navigate away.
-
-### Key Files
-
-| File | Purpose |
-|------|---------|
-| `src/lib/flagsmith.ts` | Flagsmith client singleton, identity resolution, event flushing |
-| `src/hooks/useScannerExperiment.ts` | React hook: returns variant + `trackDisposalConfirmed()` |
-| `src/components/scanner/ScanResultCard.tsx` | A/B result card — renders both variants |
-| `src/app/dashboard/scanner/page.tsx` | Scanner page — uses `ScanResultCard` |
-| `scripts/simulate-traffic.mjs` | Simulated traffic script (hackathon demo only) |
-
-### Setting Up the Experiment in Flagsmith Dashboard
-
-1. Create a feature flag called `scanner_experiment`
-2. Add a multivariate value: control = `"basic"`, variation = `"enhanced"` (50/50 split)
-3. Create a metric called `disposal_confirmed` (type: Occurrence, higher is better)
-4. Create an experiment on the `scanner_experiment` flag using the `disposal_confirmed` metric
-5. Start the experiment
-
-### Running the Simulated Traffic Script
-
-```bash
-# Simulate 200 users (default)
-node --env-file=.env.local scripts/simulate-traffic.mjs 200
-
-# Simulate a custom number
-node --env-file=.env.local scripts/simulate-traffic.mjs 50
-```
-
-> ⚠️ **ALL traffic from this script is simulated.** Every user has an identical 40% conversion probability regardless of variant. Any difference in rates is random chance, not a real treatment effect.
 
 ---
 
@@ -314,14 +357,15 @@ node --env-file=.env.local scripts/simulate-traffic.mjs 50
 - **Daily limits** on scans and learning activities
 - **Admin role verification** on all admin API routes
 - **Private group content** restricted to members only
+- **No PII sent to Flagsmith** – only anonymous or Supabase UUIDs
 
 ---
 
 ## 🚀 Deployment (Vercel)
 
 1. Push to GitHub
-2. Import project in [Vercel](https://vercel.com)
-3. Add all environment variables from `.env.local`
+2. Import the project in [Vercel](https://vercel.com)
+3. Add all environment variables from `.env.local` (including `NEXT_PUBLIC_FLAGSMITH_ENVIRONMENT_KEY`)
 4. Deploy
 
 ---
